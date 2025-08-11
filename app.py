@@ -16,7 +16,7 @@ st.set_page_config(
 
 # --- Google Gemini Configuration ---
 try:
-    genai.configure(api_key="AIzaSyBhXPPxYGc7OzhUV060IsYHBApcWoEF1aY")
+    genai.configure(api_key="use your own api key")
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"Error configuring the AI model: {e}")
@@ -103,4 +103,5 @@ if submitted:
             except json.JSONDecodeError:
                 st.error("There was an issue decoding the AI's response. It might not be valid JSON. Please try again.")
             except Exception as e:
+
                 st.error(f"An unexpected error occurred: {e}")
