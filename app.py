@@ -9,7 +9,7 @@ load_dotenv()
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="AI Learning Path Generator",
+    page_title="Learning Path Generator",
     page_icon="🚀",
     layout="wide",
 )
@@ -104,3 +104,4 @@ if submitted:
                 st.error("There was an issue decoding the AI's response. It might not be valid JSON. Please try again.")
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
+
