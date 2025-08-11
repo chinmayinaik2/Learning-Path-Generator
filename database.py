@@ -5,11 +5,13 @@ def init_user_db():
     """Initializes the database and creates all necessary tables if they don't exist."""
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
-    # Users table
+    # Users table with secret question/answer for password recovery
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            secret_question TEXT,
+            secret_answer TEXT
         )
     ''')
     # Learning paths table
@@ -34,16 +36,31 @@ def init_user_db():
             FOREIGN KEY (username) REFERENCES users (username)
         )
     ''')
+    # Task Progress Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS task_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            path_id INTEGER NOT NULL,
+            task_identifier TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0, -- 0 for not completed, 1 for completed
+            UNIQUE(username, path_id, task_identifier),
+            FOREIGN KEY (username) REFERENCES users (username),
+            FOREIGN KEY (path_id) REFERENCES learning_paths (id)
+        )
+    ''')
     conn.commit()
     conn.close()
 
 # --- User Management ---
-def add_user(username, password):
+def add_user(username, password, question, answer):
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    hashed_answer = bcrypt.hashpw(answer.lower().encode('utf-8'), bcrypt.gensalt())
     try:
-        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
+        c.execute("INSERT INTO users (username, password, secret_question, secret_answer) VALUES (?, ?, ?, ?)", 
+                  (username, hashed_password, question, hashed_answer))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -61,7 +78,42 @@ def check_user(username, password):
         return True
     return False
 
-# --- Learning Path Management ---
+def user_exists(username):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    c.execute("SELECT username FROM users WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    return result is not None
+
+# --- Password Reset ---
+def get_secret_question(username):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    c.execute("SELECT secret_question FROM users WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def check_secret_answer(username, answer):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    c.execute("SELECT secret_answer FROM users WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    if result and bcrypt.checkpw(answer.lower().encode('utf-8'), result[0]):
+        return True
+    return False
+
+def reset_password(username, new_password):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+    c.execute("UPDATE users SET password = ? WHERE username = ?", (hashed_password, username))
+    conn.commit()
+    conn.close()
+
+# --- Learning Path & Feedback ---
 def save_path(username, topic, path_data):
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
@@ -77,7 +129,6 @@ def get_user_paths(username):
     conn.close()
     return paths
 
-# --- Feedback Management ---
 def add_feedback(path_id, username, rating):
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
@@ -95,18 +146,32 @@ def get_feedback(path_id, username):
     conn.close()
     return result[0] if result else None
 
-# --- Admin Functions ---
+# --- Task Progress ---
+def update_task_status(username, path_id, task_identifier, completed):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    status = 1 if completed else 0
+    c.execute("INSERT OR REPLACE INTO task_progress (username, path_id, task_identifier, completed) VALUES (?, ?, ?, ?)",
+              (username, path_id, task_identifier, status))
+    conn.commit()
+    conn.close()
+
+def get_task_statuses_for_path(username, path_id):
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    c.execute("SELECT task_identifier, completed FROM task_progress WHERE username = ? AND path_id = ?",
+              (username, path_id))
+    statuses = dict(c.fetchall())
+    conn.close()
+    return statuses
+
+# --- Admin ---
 def get_all_feedback_with_details():
-    """Joins feedback and learning_paths tables to get a full report."""
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
     c.execute('''
-        SELECT 
-            f.username,
-            lp.topic,
-            f.rating
-        FROM feedback f
-        JOIN learning_paths lp ON f.path_id = lp.id
+        SELECT f.username, lp.topic, f.rating
+        FROM feedback f JOIN learning_paths lp ON f.path_id = lp.id
     ''')
     feedback_details = c.fetchall()
     conn.close()
