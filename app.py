@@ -2,10 +2,10 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import json
-
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
-
+load_dotenv()
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -16,7 +16,7 @@ st.set_page_config(
 
 # --- Google Gemini Configuration ---
 try:
-    genai.configure(api_key="use your own api key")
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"Error configuring the AI model: {e}")
@@ -103,5 +103,4 @@ if submitted:
             except json.JSONDecodeError:
                 st.error("There was an issue decoding the AI's response. It might not be valid JSON. Please try again.")
             except Exception as e:
-
                 st.error(f"An unexpected error occurred: {e}")
