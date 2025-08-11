@@ -1,0 +1,14 @@
+You can get your Gemini API key for free from Google AI Studio. It's a straightforward process that links the key to your Google account.
+
+
+Step-by-Step Guide
+Go to the Website: Navigate to the Google AI Studio website at aistudio.google.com.
+
+Sign In: You'll be prompted to sign in with your Google Account. If you're already signed in, you'll be taken directly to the studio.
+
+Get API Key: In the top left corner of the page, click on the "< > Get API key" button.
+
+Create a Project: A dialog box will appear. You'll need to associate your API key with a Google Cloud project. Click on "Create API key in new project". This process is automatic and sets up the necessary project for you in the background.
+
+
+Copy Your Key: Your new API key will be generated and displayed in a pop-up. Click the copy icon next to the key.
