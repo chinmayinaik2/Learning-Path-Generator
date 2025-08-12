@@ -12,19 +12,24 @@ A full-stack web application that generates personalized, day-by-day learning pl
 
 This application has evolved from a simple generator into a feature-rich learning platform:
 
-  **🤖 AI-Powered Path Generation:** Integrates the 
-  **Google Gemini API** to generate high-quality, day-by-day learning plans for any topic.
+  **🤖 AI-Powered Path Generation:** Integrates the **Google Gemini API** to generate high-quality, day-by-day learning plans for any topic.
+  
   **🔐 Secure User Authentication:**
       * Full user registration and login system.
       * Passwords securely hashed using **bcrypt**.
       * Password strength validation (length, numbers, special characters).
       * A multi-step "Forgot Password" flow using a secret question.
-    **🗃️ Database Integration:** Uses **SQLite** to persistently store all user data, saved learning paths, task progress, and user feedback.
+  
+    ** 🗃️ Database Integration:** Uses **SQLite** to persistently store all user data, saved learning paths, task progress, and user feedback.
+    
     **📊 Interactive Progress Tracking:**
       * Users can mark individual tasks as complete using interactive checkboxes.
       * Progress is saved instantly and visualized with dynamic **Plotly** gauge charts for each learning plan.
+      
    **🗓️ Extensible Long-Term Plans:** Intelligently generates long-term plans (e.g., 90+ days) in manageable 7-day chunks, which users can extend on demand.
+   
    **👍 User Feedback System:** Allows users to rate each generated path as helpful or not helpful.
+   
    **👑 Admin Dashboard:** A password-protected admin view to see all user feedback in one place.
 
 ## Technology Stack
