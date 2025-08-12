@@ -42,20 +42,52 @@ def is_password_strong(password):
         return False, "Password must contain at least one special character."
     return True, ""
 
+def parse_days(time_period_string):
+    """Extracts the first number from a string to determine the number of days."""
+    if not time_period_string: return 0
+    numbers = re.findall(r'\d+', time_period_string)
+    if numbers:
+        return int(numbers[0])
+    return 0 # Return 0 if no number is found, so logic can handle it
+
 def generate_prompt(topic, time_period, skill_level):
-    """Creates a detailed, structured prompt for the AI model."""
+    """Creates the initial learning path for a dynamic number of days."""
+    total_days_requested = parse_days(time_period)
+    # Generate for the requested duration, or a max of 7 days initially
+    days_to_generate = min(total_days_requested, 7) if total_days_requested > 0 else 7
+
     return f"""
         You are an expert instructional designer. Your task is to create a personalized, day-by-day learning path.
         **Topic:** "{topic}"
-        **Total Time Frame:** "{time_period}"
+        **Total Planned Time Frame:** "{time_period}"
         **Current Skill Level:** "{skill_level}"
         
-        Generate a detailed plan that is broken down into a daily schedule. 
-        It is critically important that the output be a clean JSON object and nothing else. Do not include any introductory text, apologies, or explanations.
-        
+        Generate a detailed plan for {days_to_generate} days.
+        The output must be a clean JSON object and nothing else.
         The top-level JSON object must have a single key "dailyPlan". The value should be an array of day objects.
-        Each day object must contain two keys: "day" (number) and "tasks" (an array).
+        Each day object must have two keys: "day" (number) and "tasks" (an array).
         Each task object must have: "title" (string), "description" (string), and "exampleLink" (a real, high-quality URL).
+    """
+
+def generate_continuation_prompt(existing_plan_json, skill_level):
+    """Creates a prompt to generate the next week of a plan."""
+    last_day = existing_plan_json.get("dailyPlan", [])[-1].get("day", 0)
+    return f"""
+        You are an expert instructional designer continuing a learning plan.
+        You are given an existing learning plan that covers the first {last_day} days.
+        Your task is to generate the *next 7 days* of the plan, starting from day {last_day + 1}.
+        The new content should logically follow the existing plan.
+
+        Here is the existing plan for context:
+        ```json
+        {json.dumps(existing_plan_json, indent=2)}
+        ```
+
+        User's Skill Level: "{skill_level}"
+
+        Generate a JSON object for the next 7 days only.
+        The output must be a clean JSON object with a single key "dailyPlan", containing an array of day objects for days {last_day + 1} through {last_day + 7}.
+        Do not repeat the existing plan. Do not add any extra text.
     """
 
 def safe_json_loads(json_string):
@@ -174,7 +206,7 @@ else: # Main application for logged-in users
     st.title("Generate a New Learning Path")
     with st.form("path_form"):
         topic_input = st.text_input("What do you want to learn?", placeholder="e.g., Python for Data Science")
-        time_input = st.text_input("How much time do you have?", placeholder="e.g., 10 days")
+        time_input = st.text_input("How much time do you have?", placeholder="e.g., 5 days, 2 weeks, 90 days")
         skill_level_input = st.selectbox("What is your current skill level?", ("Beginner", "Intermediate", "Advanced"))
         submitted = st.form_submit_button("Generate & Save Plan")
 
@@ -186,7 +218,7 @@ else: # Main application for logged-in users
                 try:
                     prompt = generate_prompt(topic_input, time_input, skill_level_input)
                     response = model.generate_content(prompt)
-                    db.save_path(st.session_state['username'], topic_input, response.text)
+                    db.save_path(st.session_state['username'], topic_input, response.text, time_input)
                     st.success("Your new path has been generated and saved!")
                     st.rerun()
                 except Exception as e:
@@ -208,11 +240,11 @@ else: # Main application for logged-in users
     if not saved_paths:
         st.write("You haven't generated any paths yet.")
     else:
-        for path_id, topic, path_data in saved_paths:
+        for path_id, topic, path_data, total_duration_text in saved_paths:
             parsed_path = safe_json_loads(path_data)
             
             if parsed_path:
-                with st.expander(f"Path for: {topic}"):
+                with st.expander(f"Path for: {topic} (Goal: {total_duration_text})", expanded=True):
                     daily_plan = parsed_path.get("dailyPlan", [])
                     task_statuses = db.get_task_statuses_for_path(st.session_state['username'], path_id)
                     all_tasks = [f"day{day.get('day', 0)}-{task.get('title', '')}" for day in daily_plan for task in day.get('tasks', [])]
@@ -245,6 +277,29 @@ else: # Main application for logged-in users
                             if link: st.markdown(f"🔗 [{link}]({link})")
                             st.divider()
                 
+                    # "Generate More" Button
+                    current_days_generated = len(daily_plan)
+                    total_days_requested = parse_days(total_duration_text)
+
+                    if total_days_requested > current_days_generated:
+                        st.markdown("---")
+                        if st.button("Generate Next 7 Days", key=f"gen_more_{path_id}", use_container_width=True):
+                            with st.spinner("Generating the next part of your plan..."):
+                                try:
+                                    continuation_prompt = generate_continuation_prompt(parsed_path, skill_level_input)
+                                    response = model.generate_content(continuation_prompt)
+                                    new_data_parsed = safe_json_loads(response.text)
+
+                                    if new_data_parsed:
+                                        parsed_path["dailyPlan"].extend(new_data_parsed.get("dailyPlan", []))
+                                        db.update_path_data(path_id, json.dumps(parsed_path))
+                                        st.success("Your path has been extended!")
+                                        st.rerun()
+                                    else:
+                                        st.error("The AI returned an invalid format for the next section. Please try again.")
+                                except Exception as e:
+                                    st.error(f"An error occurred: {e}")
+
                     # Feedback Section
                     st.markdown("**Was this path helpful?**")
                     cols = st.columns(2)
@@ -262,7 +317,7 @@ else: # Main application for logged-in users
                         feedback_text = "Helpful" if current_feedback == 1 else "Not Helpful"
                         st.info(f"You rated this path as: **{feedback_text}**")
             
-            else: # This block runs if parsing fails, avoiding nested expanders
+            else: # This block runs if parsing fails
                 st.error(f"Could not parse or display the path for: **{topic}**")
                 with st.expander("Click to see the raw data that failed to parse"):
                     st.code(path_data)
