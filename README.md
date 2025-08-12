@@ -12,7 +12,8 @@ A full-stack web application that generates personalized, day-by-day learning pl
 
 This application has evolved from a simple generator into a feature-rich learning platform:
 
-  **🤖 AI-Powered Path Generation:** Integrates the **Google Gemini API** to generate high-quality, day-by-day learning plans for any topic.
+  **🤖 AI-Powered Path Generation:** Integrates the 
+  **Google Gemini API** to generate high-quality, day-by-day learning plans for any topic.
   **🔐 Secure User Authentication:**
       * Full user registration and login system.
       * Passwords securely hashed using **bcrypt**.
