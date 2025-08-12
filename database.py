@@ -14,13 +14,14 @@ def init_user_db():
             secret_answer TEXT
         )
     ''')
-    # Learning paths table
+    # Learning paths table with a new column to store the total requested duration
     c.execute('''
         CREATE TABLE IF NOT EXISTS learning_paths (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
             topic TEXT NOT NULL,
             path_data TEXT NOT NULL,
+            total_duration_text TEXT, -- NEW: To store the original time input like "90 days"
             FOREIGN KEY (username) REFERENCES users (username)
         )
     ''')
@@ -113,22 +114,34 @@ def reset_password(username, new_password):
     conn.commit()
     conn.close()
 
-# --- Learning Path & Feedback ---
-def save_path(username, topic, path_data):
+# --- Learning Path Management ---
+def save_path(username, topic, path_data, time_period_text):
+    """Saves a new learning path, including the original requested time frame."""
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
-    c.execute("INSERT INTO learning_paths (username, topic, path_data) VALUES (?, ?, ?)", (username, topic, path_data))
+    c.execute("INSERT INTO learning_paths (username, topic, path_data, total_duration_text) VALUES (?, ?, ?, ?)",
+              (username, topic, path_data, time_period_text))
     conn.commit()
     conn.close()
 
 def get_user_paths(username):
+    """Retrieves all paths for a user, including the total duration text."""
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
-    c.execute("SELECT id, topic, path_data FROM learning_paths WHERE username = ?", (username,))
+    c.execute("SELECT id, topic, path_data, total_duration_text FROM learning_paths WHERE username = ?", (username,))
     paths = c.fetchall()
     conn.close()
     return paths
 
+def update_path_data(path_id, new_path_data):
+    """Updates the JSON data for an existing learning path."""
+    conn = sqlite3.connect('user_data.db')
+    c = conn.cursor()
+    c.execute("UPDATE learning_paths SET path_data = ? WHERE id = ?", (new_path_data, path_id))
+    conn.commit()
+    conn.close()
+
+# --- Feedback Management ---
 def add_feedback(path_id, username, rating):
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
@@ -146,7 +159,7 @@ def get_feedback(path_id, username):
     conn.close()
     return result[0] if result else None
 
-# --- Task Progress ---
+# --- Task Progress Management ---
 def update_task_status(username, path_id, task_identifier, completed):
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
@@ -165,7 +178,7 @@ def get_task_statuses_for_path(username, path_id):
     conn.close()
     return statuses
 
-# --- Admin ---
+# --- Admin Functions ---
 def get_all_feedback_with_details():
     conn = sqlite3.connect('user_data.db')
     c = conn.cursor()
