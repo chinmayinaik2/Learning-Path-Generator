@@ -44,27 +44,41 @@ def is_password_strong(password):
 
 def parse_days(time_period_string):
     """
-    Intelligently parses a string like "3 days", "2 weeks", or "1 month" 
+    Intelligently parses a string like "3 days", "2 weeks", or "a month"
     into an integer representing the total number of days.
     """
     if not time_period_string:
         return 0
 
-    text = time_period_string.lower()
+    text = time_period_string.lower().strip()
     quantity = 0
+
+    number_words = {
+        'a': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+    }
+
     numbers = re.findall(r'\d+', text)
     if numbers:
         quantity = int(numbers[0])
+    else:
+        for word, value in number_words.items():
+            if word in text:
+                quantity = value
+                break
 
+    if quantity == 0 and any(unit in text for unit in ['day', 'week', 'month', 'year']):
+        quantity = 1
+        
     if 'month' in text:
-        return quantity * 30  # Using a 30-day approximation
+        return quantity * 30
     elif 'week' in text:
         return quantity * 7
     elif 'year' in text:
         return quantity * 365
     elif 'day' in text:
         return quantity
-    elif quantity > 0: # Fallback for just a number
+    elif quantity > 0:
         return quantity
         
     return 0
@@ -72,7 +86,6 @@ def parse_days(time_period_string):
 def generate_prompt(topic, time_period, skill_level):
     """Creates the initial learning path for a dynamic number of days."""
     total_days_requested = parse_days(time_period)
-    # Generate for the requested duration, or a max of 7 days initially
     days_to_generate = min(total_days_requested, 7) if total_days_requested > 0 else 7
 
     return f"""
@@ -88,13 +101,14 @@ def generate_prompt(topic, time_period, skill_level):
         Each task object must have: "title" (string), "description" (string), and "exampleLink" (a real, high-quality URL).
     """
 
-def generate_continuation_prompt(existing_plan_json, skill_level):
-    """Creates a prompt to generate the next week of a plan."""
+def generate_continuation_prompt(existing_plan_json, skill_level, days_to_generate):
+    """Creates a prompt to generate the next section of a plan for a specific number of days."""
     last_day = existing_plan_json.get("dailyPlan", [])[-1].get("day", 0)
+    
     return f"""
         You are an expert instructional designer continuing a learning plan.
         You are given an existing learning plan that covers the first {last_day} days.
-        Your task is to generate the *next 7 days* of the plan, starting from day {last_day + 1}.
+        Your task is to generate the *next {days_to_generate} days* of the plan, starting from day {last_day + 1}.
         The new content should logically follow the existing plan.
 
         Here is the existing plan for context:
@@ -104,8 +118,8 @@ def generate_continuation_prompt(existing_plan_json, skill_level):
 
         User's Skill Level: "{skill_level}"
 
-        Generate a JSON object for the next 7 days only.
-        The output must be a clean JSON object with a single key "dailyPlan", containing an array of day objects for days {last_day + 1} through {last_day + 7}.
+        Generate a JSON object for the next {days_to_generate} days only.
+        The output must be a clean JSON object with a single key "dailyPlan", containing an array of day objects for days {last_day + 1} through {last_day + days_to_generate}.
         Do not repeat the existing plan. Do not add any extra text.
     """
 
@@ -225,7 +239,7 @@ else: # Main application for logged-in users
     st.title("Generate a New Learning Path")
     with st.form("path_form"):
         topic_input = st.text_input("What do you want to learn?", placeholder="e.g., Python for Data Science")
-        time_input = st.text_input("How much time do you have?", placeholder="e.g., 5 days, 2 weeks, 90 days")
+        time_input = st.text_input("How much time do you have?", placeholder="e.g., 5 days, 2 weeks, 1 month")
         skill_level_input = st.selectbox("What is your current skill level?", ("Beginner", "Intermediate", "Advanced"))
         submitted = st.form_submit_button("Generate & Save Plan")
 
@@ -301,11 +315,15 @@ else: # Main application for logged-in users
                     total_days_requested = parse_days(total_duration_text)
 
                     if total_days_requested > current_days_generated:
+                        remaining_days = total_days_requested - current_days_generated
+                        days_to_generate_next = min(remaining_days, 7)
+                        button_text = f"Generate Next {days_to_generate_next} Days"
+                        
                         st.markdown("---")
-                        if st.button("Generate Next 7 Days", key=f"gen_more_{path_id}", use_container_width=True):
+                        if st.button(button_text, key=f"gen_more_{path_id}", use_container_width=True):
                             with st.spinner("Generating the next part of your plan..."):
                                 try:
-                                    continuation_prompt = generate_continuation_prompt(parsed_path, skill_level_input)
+                                    continuation_prompt = generate_continuation_prompt(parsed_path, skill_level_input, days_to_generate_next)
                                     response = model.generate_content(continuation_prompt)
                                     new_data_parsed = safe_json_loads(response.text)
                                     if new_data_parsed:
@@ -334,8 +352,7 @@ else: # Main application for logged-in users
                         feedback_text = "Helpful" if current_feedback == 1 else "Not Helpful"
                         st.info(f"You rated this path as: **{feedback_text}**")
             
-            else: # This block runs if parsing fails
+            else: 
                 st.error(f"Could not parse or display the path for: **{topic}**")
                 with st.expander("Click to see the raw data that failed to parse"):
                     st.code(path_data)
-
