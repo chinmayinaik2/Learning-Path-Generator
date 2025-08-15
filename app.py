@@ -281,6 +281,7 @@ else: # Main application for logged-in users
                                      'steps' : [{'range': [0, total_tasks], 'color': "lightgray"}]}
                         ))
                         fig.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
+                        fig.update_layout(title_text=f"progress_{path_id}", title_font_color="rgba(0,0,0,0)")
                         st.plotly_chart(fig, use_container_width=True)
                         st.markdown("---")
 
@@ -337,3 +338,4 @@ else: # Main application for logged-in users
                 st.error(f"Could not parse or display the path for: **{topic}**")
                 with st.expander("Click to see the raw data that failed to parse"):
                     st.code(path_data)
+
