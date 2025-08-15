@@ -72,6 +72,7 @@ def parse_days(time_period_string):
 def generate_prompt(topic, time_period, skill_level):
     """Creates the initial learning path for a dynamic number of days."""
     total_days_requested = parse_days(time_period)
+    # Generate for the requested duration, or a max of 7 days initially
     days_to_generate = min(total_days_requested, 7) if total_days_requested > 0 else 7
 
     return f"""
@@ -82,7 +83,9 @@ def generate_prompt(topic, time_period, skill_level):
         
         Generate a detailed plan for {days_to_generate} days.
         The output must be a clean JSON object and nothing else.
-        The top-level JSON object must have a single key "dailyPlan"... (rest of prompt is the same)
+        The top-level JSON object must have a single key "dailyPlan". The value should be an array of day objects.
+        Each day object must have two keys: "day" (number) and "tasks" (an array).
+        Each task object must have: "title" (string), "description" (string), and "exampleLink" (a real, high-quality URL).
     """
 
 def generate_continuation_prompt(existing_plan_json, skill_level):
@@ -92,7 +95,18 @@ def generate_continuation_prompt(existing_plan_json, skill_level):
         You are an expert instructional designer continuing a learning plan.
         You are given an existing learning plan that covers the first {last_day} days.
         Your task is to generate the *next 7 days* of the plan, starting from day {last_day + 1}.
-        The new content should logically follow the existing plan... (rest of prompt is the same)
+        The new content should logically follow the existing plan.
+
+        Here is the existing plan for context:
+        ```json
+        {json.dumps(existing_plan_json, indent=2)}
+        ```
+
+        User's Skill Level: "{skill_level}"
+
+        Generate a JSON object for the next 7 days only.
+        The output must be a clean JSON object with a single key "dailyPlan", containing an array of day objects for days {last_day + 1} through {last_day + 7}.
+        Do not repeat the existing plan. Do not add any extra text.
     """
 
 def safe_json_loads(json_string):
@@ -112,16 +126,83 @@ if not st.session_state['logged_in']:
     choice = st.selectbox("Login / Signup / Reset", ["Login", "Signup", "Forgot Password"])
 
     if choice == "Login":
-        # ... (Login form logic)
-        pass # Placeholder for brevity, code is in previous full versions
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login")
+            if submitted:
+                if db.check_user(username, password):
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = username
+                    st.rerun()
+                else:
+                    st.error("Incorrect username or password.")
     
     elif choice == "Signup":
-        # ... (Signup form logic)
-        pass # Placeholder for brevity, code is in previous full versions
+        with st.form("signup_form"):
+            new_username = st.text_input("Choose a Username")
+            new_password = st.text_input("Choose a Password", type="password")
+            st.info("Passwords must be 8+ characters and contain a number and a special character.")
+            secret_question = st.selectbox("Choose a Security Question", 
+                                           ["What was your first pet's name?", 
+                                            "What city were you born in?", 
+                                            "What is your favorite book?"])
+            secret_answer = st.text_input("Your Answer (case-insensitive)")
+            submitted = st.form_submit_button("Signup")
+            if submitted:
+                if db.user_exists(new_username):
+                    st.error("Username already exists. Please choose another one.")
+                else:
+                    is_strong, message = is_password_strong(new_password)
+                    if not is_strong:
+                        st.error(message)
+                    elif not secret_answer:
+                        st.error("Please provide an answer to your secret question.")
+                    else:
+                        db.add_user(new_username, new_password, secret_question, secret_answer)
+                        st.success("Account created successfully! Please proceed to the Login tab.")
     
     elif choice == "Forgot Password":
-        # ... (Forgot Password logic)
-        pass # Placeholder for brevity, code is in previous full versions
+        st.subheader("Password Reset")
+        if st.session_state.reset_stage is None:
+            st.session_state.reset_stage = 1
+
+        if st.session_state.reset_stage == 1:
+            username_to_reset = st.text_input("Enter your username to begin")
+            if st.button("Next"):
+                question = db.get_secret_question(username_to_reset)
+                if question:
+                    st.session_state.username_to_reset = username_to_reset
+                    st.session_state.secret_question = question
+                    st.session_state.reset_stage = 2
+                    st.rerun()
+                else:
+                    st.error("Username not found.")
+        
+        if st.session_state.reset_stage == 2:
+            st.write(f"Security Question: **{st.session_state.secret_question}**")
+            answer = st.text_input("Your Secret Answer", key="secret_answer_reset")
+            if st.button("Verify Answer"):
+                if db.check_secret_answer(st.session_state.username_to_reset, answer):
+                    st.session_state.reset_stage = 3
+                    st.rerun()
+                else:
+                    st.error("Incorrect answer.")
+
+        if st.session_state.reset_stage == 3:
+            st.write("Verification successful! Please set a new password.")
+            new_password = st.text_input("New Password", type="password", key="new_pass")
+            if st.button("Reset Password"):
+                is_strong, message = is_password_strong(new_password)
+                if not is_strong:
+                    st.error(message)
+                else:
+                    db.reset_password(st.session_state.username_to_reset, new_password)
+                    st.success("Password has been reset successfully! Please log in.")
+                    for key in list(st.session_state.keys()):
+                        if key.startswith('reset_') or key == 'username_to_reset' or key == 'secret_question':
+                            del st.session_state[key]
+                    st.rerun()
 
 else: # Main application for logged-in users
     # --- SIDEBAR ---
@@ -252,7 +333,7 @@ else: # Main application for logged-in users
                         feedback_text = "Helpful" if current_feedback == 1 else "Not Helpful"
                         st.info(f"You rated this path as: **{feedback_text}**")
             
-            else: 
+            else: # This block runs if parsing fails
                 st.error(f"Could not parse or display the path for: **{topic}**")
                 with st.expander("Click to see the raw data that failed to parse"):
                     st.code(path_data)
